@@ -9,12 +9,20 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Performs half adder operation.
+A state machine controlling a 5-floor elevator. It latches requests from cabin and hall buttons, moving the car sequentially.
 
 ## How to test
 
-Give diff input combinations, and verify the truth table.
+-Pulse any input in ui_in[4:0] (Cabin) or ui_in[7:5] / uio_in[4:0] (Hall).
+
+-Monitor uo_out[2:0] for binary floor position.
+
+-Observe uo_out[3] (Up), uo_out[4] (Down), and uo_out[5] (Door Open blink).
 
 ## External hardware
 
-No external hardware required.
+-LEDs: Connected to uo_out[5:0] to show floor and status.
+
+-Buttons: Connected to ui_in and uio_in for floor calls.
+
+-OLED: Pins uo_out[7:6] reserved for I2C monitoring.
