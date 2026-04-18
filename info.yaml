@@ -14,7 +14,7 @@ project:
   top_module:  "tt_um_hardware_accelerator"
 
   source_files:
-    - "tproject.v"
+    - "project.v"
 
 # The pinout of your project.
 pinout:
