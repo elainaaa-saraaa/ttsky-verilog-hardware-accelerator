@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Your Name
+ * Copyright (c) 2024 Team Trinity
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -16,156 +16,119 @@ module tt_um_elevator_controller (
     input  wire       rst_n     // reset_n - low to reset
 );
 
-    // --- PIN ASSIGNMENTS ---
-    // ui_in[4:0]   : Inside Cabin Floor Select (0-4)
-    // ui_in[7:5]   : Hall Call UP (0, 1, 2)
-    // uio_in[0]    : Hall Call UP (3)
-    // uio_in[4:1]  : Hall Call DOWN (1, 2, 3, 4)
-    // uo_out[2:0]  : Current Floor (Binary)
-    // uo_out[3]    : Moving Up LED
-    // uo_out[4]    : Moving Down LED
-    // uo_out[5]    : Door Open LED (Blinks when open)
-    // uo_out[6]    : OLED SCL (Clock passthrough)
-    // uo_out[7]    : OLED SDA (Ground)
+    // --- INTERNAL SIGNALS ---
+    reg [15:0] imem [0:15];    // 16-bit Instruction Memory
+    reg [3:0]  pc;             // Program Counter
+    reg [7:0]  timer;          // Strobe timer for waveform visibility
+    
+    // Interconnect Wires
+    wire [15:0] current_acc;
+    wire [7:0]  alu_result;
+    wire [7:0]  rf_douta, rf_doutb;
+    wire [3:0]  opcode = imem[pc][15:12];
+    wire [2:0]  rd      = imem[pc][10:8];
+    wire [2:0]  ra_addr = imem[pc][6:4];
+    wire [2:0]  rb_addr = imem[pc][2:0];
+    wire [7:0]  imm     = imem[pc][7:0];
 
-    wire rst = !rst_n;
-    wire [2:0] current_floor;
-    wire moving_up, moving_down, floor_reached;
-    wire [2:0] target_floor;
-    wire [4:0] floor_requests;
+    // --- HARDWARE INSTANTIATIONS ---
 
-    // Slow blink logic for the Door Open LED (approx 2Hz at 10MHz)
-    reg [21:0] blink_count;
-    always @(posedge clk) blink_count <= blink_count + 1;
-    wire door_visual = floor_reached && blink_count[21];
-
-    // Instantiate Request Handler
-    request_handler RH (
-        .clk(clk), .rst(rst),
-        .call_up_0(ui_in[5]), .call_up_1(ui_in[6]), .call_up_2(ui_in[7]), .call_up_3(uio_in[0]),
-        .call_down_1(uio_in[1]), .call_down_2(uio_in[2]), .call_down_3(uio_in[3]), .call_down_4(uio_in[4]),
-        .select_floor_0(ui_in[0]), .select_floor_1(ui_in[1]), .select_floor_2(ui_in[2]), 
-        .select_floor_3(ui_in[3]), .select_floor_4(ui_in[4]),
-        .current_floor(current_floor), .floor_reached(floor_reached),
-        .floor_requests(floor_requests), .target_floor(target_floor)
+    // Register File (R0-R7)
+    regfile RF (
+        .clk(clk), .rstn(rst_n), 
+        .wren(timer == 8'd127), // Commit result at end of strobe
+        .addra(ra_addr), .addrb(rb_addr), .addrdest(rd),
+        .din(alu_result), .douta(rf_douta), .doutb(rf_doutb)
     );
 
-    // Instantiate Movement Controller with HUMAN VISIBLE DELAYS
-    // 10,000,000 cycles = 1 second at 10MHz
-    movement_controller #( .MOVE_DELAY(24'd10_000_000), .DOOR_DELAY(24'd20_000_000) ) MC (
-        .clk(clk), .rst(rst), .target_floor(target_floor), .current_floor(current_floor),
-        .floor_reached(floor_reached), .moving_up(moving_up), .moving_down(moving_down)
+    // Execution Unit (ALU + 16-bit MAC)
+    datapath DP (
+        .clk(clk), .reset(!rst_n),
+        .opcode(opcode), .a(rf_douta), .b((opcode == 4'h4) ? imm : rf_doutb),
+        .result(alu_result), .acc(current_acc)
     );
+
+    // --- MAIN CONTROL LOGIC ---
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            pc <= 0; timer <= 0;
+            // PRE-LOADED ACCELERATOR PROGRAM
+            imem[0]  <= 16'h410A; // LOAD R1, 10
+            imem[1]  <= 16'h4205; // LOAD R2, 5
+            imem[2]  <= 16'h0312; // ADD R3 = 15
+            imem[3]  <= 16'h5300; // STORE R3
+            imem[4]  <= 16'h1412; // SUB R4 = 5
+            imem[5]  <= 16'h5400; // STORE R4
+            imem[6]  <= 16'h2512; // MUL R5 = 50
+            imem[7]  <= 16'h5500; // STORE R5
+            imem[8]  <= 16'h4640; // LOAD R6, 64
+            imem[9]  <= 16'h5600; // STORE R6
+            imem[10] <= 16'h3012; // MAC Acc = 50
+            imem[11] <= 16'h8000; // STACC (Show 50)
+            imem[12] <= 16'h3012; // MAC Acc = 100
+            imem[13] <= 16'h8000; // STACC (Show 100)
+            imem[14] <= 16'h0000; 
+            imem[15] <= 16'h0000;
+        end else if (ena) begin
+            // Human-visible delay loop
+            if (timer < 128) begin 
+                timer <= timer + 1;
+            end else begin
+                timer <= 0;
+                if (pc < 15) pc <= pc + 1;
+            end
+        end
+    end
 
     // --- OUTPUT ASSIGNMENTS ---
-    assign uo_out[2:0] = current_floor;
-    assign uo_out[3]   = moving_up;
-    assign uo_out[4]   = moving_down;
-    assign uo_out[5]   = door_visual; 
-    
-    // OLED Placeholders
-    assign uo_out[6]   = clk; 
-    assign uo_out[7]   = 1'b0; 
-
-    // Configure uio pins as inputs
-    assign uio_oe  = 8'b00000000;
-    assign uio_out = 8'b00000000;
+    assign uo_out  = alu_result; // Result visible on LEDs/Waveform
+    assign uio_out = 8'b0;
+    assign uio_oe  = 8'b0; // Inputs only to prevent shorts
 
 endmodule
 
-module request_handler(   
-    input  wire        clk, rst,
-    input  wire        call_up_0, call_up_1, call_up_2, call_up_3,
-    input  wire        call_down_1, call_down_2, call_down_3, call_down_4,
-    input  wire        select_floor_0, select_floor_1, select_floor_2, select_floor_3, select_floor_4,
-    input  wire [2:0]  current_floor,
-    input  wire        floor_reached,
-    output reg  [4:0]  floor_requests,
-    output reg  [2:0]  target_floor
+// --- SUB-MODULE: REGISTER FILE ---
+module regfile (
+    input  wire clk, rstn, wren,
+    input  wire [2:0] addra, addrb, addrdest,
+    input  wire [7:0] din,
+    output wire [7:0] douta, doutb
 );
-    reg floor_reached_prev;
-    wire served = floor_reached_prev && !floor_reached;
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            floor_requests <= 5'b0;
-            floor_reached_prev <= 0;
-        end else begin
-            floor_reached_prev <= floor_reached;
-            if (call_up_0   || select_floor_0) floor_requests[0] <= 1;
-            if (call_up_1   || call_down_1 || select_floor_1) floor_requests[1] <= 1;
-            if (call_up_2   || call_down_2 || select_floor_2) floor_requests[2] <= 1;
-            if (call_up_3   || call_down_3 || select_floor_3) floor_requests[3] <= 1;
-            if (call_down_4 || select_floor_4)                floor_requests[4] <= 1;
-            if (served) floor_requests[current_floor] <= 0;
-        end
-    end
-
-    always @(*) begin
-        target_floor = current_floor; 
-        if (floor_requests != 5'b0) begin
-            if (floor_requests[4])      target_floor = 3'd4;
-            if (floor_requests[3])      target_floor = 3'd3;
-            if (floor_requests[2])      target_floor = 3'd2;
-            if (floor_requests[1])      target_floor = 3'd1;
-            if (floor_requests[0])      target_floor = 3'd0;
+    reg [7:0] storage [0:7];
+    assign douta = storage[addra];
+    assign doutb = storage[addrb];
+    integer i;
+    always @(posedge clk) begin
+        if (!rstn) begin
+            for (i=0; i<8; i=i+1) storage[i] <= 8'h00;
+        end else if (wren) begin
+            storage[addrdest] <= din;
         end
     end
 endmodule
 
-module movement_controller #(
-    parameter MOVE_DELAY = 10_000_000,
-    parameter DOOR_DELAY = 20_000_000
-)(            
-    input  wire        clk, rst,
-    input  wire [2:0]  target_floor,
-    output reg  [2:0]  current_floor,
-    output reg         floor_reached, moving_up, moving_down
+// --- SUB-MODULE: DATAPATH (ALU & 16-bit ACC) ---
+module datapath (
+    input  wire        clk, reset,
+    input  wire [3:0]  opcode,
+    input  wire [7:0]  a, b,
+    output reg  [7:0]  result,
+    output reg  [15:0] acc
 );
-    localparam IDLE=0, UP=1, DOWN=2, ARRIVED=3;
-    reg [1:0]  state;
-    reg [27:0] count; // Increased bit-width for large delays
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state <= IDLE; current_floor <= 3'd0; count <= 0;
-            moving_up <= 0; moving_down <= 0; floor_reached <= 0;
+    always @(posedge clk) begin
+        if (reset) begin
+            acc <= 16'b0; result <= 8'b0;
         end else begin
-            case (state)
-                IDLE: begin
-                    floor_reached <= 0; moving_up <= 0; moving_down <= 0; count <= 0;
-                    if      (target_floor > current_floor) state <= UP;
-                    else if (target_floor < current_floor) state <= DOWN;
-                end
-                UP: begin
-                    moving_up <= 1;
-                    if (count < MOVE_DELAY) count <= count + 1;
-                    else begin
-                        count <= 0;
-                        current_floor <= current_floor + 1;
-                        if (current_floor + 1 == target_floor) state <= ARRIVED;
-                    end
-                end
-                DOWN: begin
-                    moving_down <= 1;
-                    if (count < MOVE_DELAY) count <= count + 1;
-                    else begin
-                        count <= 0;
-                        current_floor <= current_floor - 1;
-                        if (current_floor - 1 == target_floor) state <= ARRIVED;
-                    end
-                end
-                ARRIVED: begin
-                    moving_up <= 0; moving_down <= 0;
-                    if (count < DOOR_DELAY) begin
-                        floor_reached <= 1;
-                        count <= count + 1;
-                    end else begin
-                        floor_reached <= 0;
-                        count <= 0;
-                        state <= IDLE;
-                    end
-                end
+            case (opcode)
+                4'h0: result <= a + b;             // ADD
+                4'h1: result <= a - b;             // SUB
+                4'h2: result <= a * b;             // MUL
+                4'h3: acc    <= acc + (a * b);     // MAC UNIT
+                4'h6: result <= a << b[2:0];       // SHIFT
+                4'h4: result <= b;                 // LOAD IMM
+                4'h5: result <= a;                 // STORE
+                4'h8: result <= acc[7:0];          // STACC
+                default: result <= result;
             endcase
         end
     end
