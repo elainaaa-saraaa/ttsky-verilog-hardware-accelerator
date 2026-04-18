@@ -6,18 +6,17 @@
 `default_nettype none
 
 module tt_um_hardware_accelerator (
-    input  wire [7:0] ui_in,    
-    output wire [7:0] uo_out,   
-    input  wire [7:0] uio_in,   
-    output wire [7:0] uio_out,  
-    output wire [7:0] uio_oe,   
-    input  wire       ena,      
-    input  wire       clk,      
-    input  wire       rst_n     
+    input  wire [7:0] ui_in,    // Dedicated inputs
+    output wire [7:0] uo_out,   // Dedicated outputs
+    input  wire [7:0] uio_in,   // IOs: Input path
+    output wire [7:0] uio_out,  // IOs: Output path
+    output wire [7:0] uio_oe,   // IOs: Enable path
+    input  wire       ena,      // always 1 when the design is powered
+    input  wire       clk,      // clock
+    input  wire       rst_n     // reset_n - low to reset
 );
 
-    // --- INTERNAL SIGNALS ---
-    reg [15:0] imem [0:15];    
+    reg [15:0] imem [0:7];    
     reg [3:0]  pc;             
     reg [7:0]  timer;          
     
@@ -25,51 +24,38 @@ module tt_um_hardware_accelerator (
     wire [7:0]  alu_result;
     wire [7:0]  rf_douta, rf_doutb;
     
-    // Instruction Decoding
     wire [3:0] opcode = imem[pc][15:12];
     wire [2:0] rd     = imem[pc][10:8];
     wire [2:0] ra_addr = imem[pc][6:4];
     wire [2:0] rb_addr = imem[pc][2:0];
 
-    // --- HARDWARE INSTANTIATIONS ---
-
+    // Hardware Instantiations
     regfile RF (
-        .clk(clk), 
-        .rstn(rst_n), 
+        .clk(clk), .rstn(rst_n), 
         .wren(timer == 8'd127), 
-        .addra(ra_addr), 
-        .addrb(rb_addr), 
-        .addrdest(rd),
-        .din(alu_result), 
-        .douta(rf_douta), 
-        .doutb(rf_doutb)
+        .addra(ra_addr), .addrb(rb_addr), .addrdest(rd),
+        .din(alu_result), .douta(rf_douta), .doutb(rf_doutb)
     );
 
     datapath DP (
-        .clk(clk), 
-        .reset(!rst_n),
+        .clk(clk), .reset(!rst_n),
         .opcode(opcode), 
-        .a(rf_douta), 
-        .b(rf_doutb), 
-        .result(alu_result), 
-        .acc(current_acc)
+        .a(rf_douta), .b(rf_doutb), 
+        .result(alu_result), .acc(current_acc)
     );
 
-    // --- MAIN CONTROL LOGIC ---
     always @(posedge clk) begin
         if (!rst_n) begin
-            pc <= 0; 
-            timer <= 0;
-
-            // The Program Sequence
-            imem[0]  <= 16'h0312; // R3 = R1 + R2 (10+5=15)
-            imem[1]  <= 16'h1412; // R4 = R1 - R2 (10-5=5)
-            imem[2]  <= 16'h2512; // R5 = R1 * R2 (10*5=50)
-            imem[3]  <= 16'h3012; // Acc += R1 * R2
-            imem[4]  <= 16'h8000; // Output Accumulator (STACC)
-            imem[5]  <= 16'h0000; 
-            imem[6]  <= 16'h0000;
-            imem[7]  <= 16'h0000;
+            pc <= 0; timer <= 0;
+            // Program: R1=10, R2=5 are baked in the regfile
+            imem[0] <= 16'h0312; // R3 = R1 + R2 (15)
+            imem[1] <= 16'h1412; // R4 = R1 - R2 (5)
+            imem[2] <= 16'h2512; // R5 = R1 * R2 (50)
+            imem[3] <= 16'h3012; // Acc += R1 * R2
+            imem[4] <= 16'h8000; // Output Acc[7:0]
+            imem[5] <= 16'h0000; 
+            imem[6] <= 16'h0000;
+            imem[7] <= 16'h0000;
         end else if (ena) begin
             if (timer < 128) begin 
                 timer <= timer + 1;
@@ -80,14 +66,12 @@ module tt_um_hardware_accelerator (
         end
     end
 
-    // Pin Assignments
     assign uo_out  = alu_result; 
     assign uio_out = 8'b0;
     assign uio_oe  = 8'b0; 
 
 endmodule
 
-// --- SUB-MODULE: REGISTER FILE ---
 module regfile (
     input  wire clk, rstn, wren,
     input  wire [2:0] addra, addrb, addrdest,
@@ -97,39 +81,35 @@ module regfile (
     reg [7:0] storage [0:7];
     assign douta = storage[addra];
     assign doutb = storage[addrb];
-    
     integer i;
     always @(posedge clk) begin
         if (!rstn) begin
             for (i=0; i<8; i=i+1) storage[i] <= 8'h0;
-            // HARD-CODED VALUES SET HERE (SAFE FOR GDS)
-            storage[1] <= 8'd10;
-            storage[2] <= 8'd5;
+            storage[1] <= 8'd10; // Hard-coded A
+            storage[2] <= 8'd5;  // Hard-coded B
         end else if (wren) begin
             storage[addrdest] <= din;
         end
     end
 endmodule
 
-// --- SUB-MODULE: DATAPATH ---
 module datapath (
-    input  wire        clk, reset,
-    input  wire [3:0]  opcode,
-    input  wire [7:0]  a, b,
-    output reg  [7:0]  result,
+    input  wire clk, reset,
+    input  wire [3:0] opcode,
+    input  wire [7:0] a, b,
+    output reg  [7:0] result,
     output reg  [15:0] acc
 );
     always @(posedge clk) begin
         if (reset) begin
-            acc <= 16'b0; 
-            result <= 8'b0;
+            acc <= 16'b0; result <= 8'b0;
         end else begin
             case (opcode)
                 4'h0: result <= a + b;
                 4'h1: result <= a - b;
                 4'h2: result <= a * b;
                 4'h3: acc    <= acc + (a * b);
-                4'h8: result <= acc[7:0]; // STACC
+                4'h8: result <= acc[7:0];
                 default: result <= result;
             endcase
         end
