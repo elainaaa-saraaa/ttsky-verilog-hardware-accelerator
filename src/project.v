@@ -61,17 +61,12 @@ module tt_um_hardware_accelerator (
             pc <= 0; 
             timer <= 0;
 
-            // Manual Load of 10 and 5 into R1 and R2
-            // These registers will be filled immediately on reset
-            RF.storage[1] <= 8'd10;
-            RF.storage[2] <= 8'd5;
-
             // The Program Sequence
             imem[0]  <= 16'h0312; // R3 = R1 + R2 (10+5=15)
             imem[1]  <= 16'h1412; // R4 = R1 - R2 (10-5=5)
             imem[2]  <= 16'h2512; // R5 = R1 * R2 (10*5=50)
             imem[3]  <= 16'h3012; // Acc += R1 * R2
-            imem[4]  <= 16'h8000; // Output Accumulator
+            imem[4]  <= 16'h8000; // Output Accumulator (STACC)
             imem[5]  <= 16'h0000; 
             imem[6]  <= 16'h0000;
             imem[7]  <= 16'h0000;
@@ -102,11 +97,14 @@ module regfile (
     reg [7:0] storage [0:7];
     assign douta = storage[addra];
     assign doutb = storage[addrb];
+    
     integer i;
     always @(posedge clk) begin
         if (!rstn) begin
             for (i=0; i<8; i=i+1) storage[i] <= 8'h0;
-            // The top module forces 10 and 5 here during reset
+            // HARD-CODED VALUES SET HERE (SAFE FOR GDS)
+            storage[1] <= 8'd10;
+            storage[2] <= 8'd5;
         end else if (wren) begin
             storage[addrdest] <= din;
         end
@@ -131,7 +129,7 @@ module datapath (
                 4'h1: result <= a - b;
                 4'h2: result <= a * b;
                 4'h3: acc    <= acc + (a * b);
-                4'h8: result <= acc[7:0];
+                4'h8: result <= acc[7:0]; // STACC
                 default: result <= result;
             endcase
         end
