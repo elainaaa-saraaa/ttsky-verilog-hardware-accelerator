@@ -6,17 +6,16 @@
 `default_nettype none
 
 module tt_um_hardware_accelerator (
-    input  wire [7:0] ui_in,    // Dedicated inputs (Operand A)
-    output wire [7:0] uo_out,   // Dedicated outputs (Result)
-    input  wire [7:0] uio_in,   // IOs: Input path (Operand B)
-    output wire [7:0] uio_out,  // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path
-    input  wire       ena,      // always 1 when the design is powered
-    input  wire       clk,      // clock
-    input  wire       rst_n     // reset_n - low to reset
+    input  wire [7:0] ui_in,    // Operand A
+    output wire [7:0] uo_out,   // Result
+    input  wire [7:0] uio_in,   // Operand B
+    output wire [7:0] uio_out,  
+    output wire [7:0] uio_oe,   
+    input  wire       ena,      
+    input  wire       clk,      
+    input  wire       rst_n     
 );
 
-    // --- INTERNAL SIGNALS ---
     reg [15:0] imem [0:15];    
     reg [3:0]  pc;             
     reg [7:0]  timer;          
@@ -31,14 +30,12 @@ module tt_um_hardware_accelerator (
     wire [2:0] ra_addr = imem[pc][6:4];
     wire [2:0] rb_addr = imem[pc][2:0];
 
-    // Latch Logic for Dynamic Inputs
-    reg [7:0] latch_a, latch_b;
-
-    // --- HARDWARE INSTANTIATIONS ---
-
+    // Hardware Instantiations
     regfile RF (
         .clk(clk), .rstn(rst_n), 
         .wren(timer == 8'd127), 
+        .force_w(pc == 0 && timer == 0), // Latch switches on start
+        .din_a(ui_in), .din_b(uio_in),
         .addra(ra_addr), .addrb(rb_addr), .addrdest(rd),
         .din(alu_result), .douta(rf_douta), .doutb(rf_doutb)
     );
@@ -46,34 +43,26 @@ module tt_um_hardware_accelerator (
     datapath DP (
         .clk(clk), .reset(!rst_n),
         .opcode(opcode), 
-        .a((pc == 0) ? latch_a : rf_douta), // Feed latched data in first step
-        .b((pc == 0) ? latch_b : rf_doutb), 
+        .a(rf_douta), 
+        .b(rf_doutb), 
         .result(alu_result), .acc(current_acc)
     );
 
-    // --- MAIN CONTROL LOGIC ---
     always @(posedge clk) begin
         if (!rst_n) begin
             pc <= 0; timer <= 0;
-            latch_a <= 8'h0; latch_b <= 8'h0;
-
-            // Program: Operates on whatever was loaded into Registers
-            imem[0]  <= 16'h5100; // Step 0: Capture and Store Operands
-            imem[1]  <= 16'h0312; // ADD R3 = R1 + R2
-            imem[2]  <= 16'h1412; // SUB R4 = R1 - R2
-            imem[3]  <= 16'h2512; // MUL R5 = R1 * R2
-            imem[4]  <= 16'h3012; // MAC Acc += (R1 * R2)
-            imem[5]  <= 16'h8000; // STACC (Show Result)
-            imem[6]  <= 16'h0000; // NOP
+            // Program
+            imem[0]  <= 16'h0000; // NOP (Wait for latch)
+            imem[1]  <= 16'h0312; // R3 = R1 + R2
+            imem[2]  <= 16'h1412; // R4 = R1 - R2
+            imem[3]  <= 16'h2512; // R5 = R1 * R2
+            imem[4]  <= 16'h3012; // Acc += R1 * R2
+            imem[5]  <= 16'h8000; // Show Acc
+            imem[6]  <= 16'h0000;
             imem[7]  <= 16'h0000;
         end else if (ena) begin
             if (timer < 128) begin 
                 timer <= timer + 1;
-                // Capture the physical pins at the very start of execution
-                if (pc == 0 && timer == 0) begin
-                    latch_a <= ui_in;
-                    latch_b <= uio_in;
-                end
             end else begin
                 timer <= 0;
                 if (pc < 7) pc <= pc + 1;
@@ -88,7 +77,8 @@ module tt_um_hardware_accelerator (
 endmodule
 
 module regfile (
-    input  wire clk, rstn, wren,
+    input  wire clk, rstn, wren, force_w,
+    input  wire [7:0] din_a, din_b,
     input  wire [2:0] addra, addrb, addrdest,
     input  wire [7:0] din,
     output wire [7:0] douta, doutb
@@ -100,6 +90,9 @@ module regfile (
     always @(posedge clk) begin
         if (!rstn) begin
             for (i=0; i<8; i=i+1) storage[i] <= 8'h0;
+        end else if (force_w) begin
+            storage[1] <= din_a; // Force Operand A into R1
+            storage[2] <= din_b; // Force Operand B into R2
         end else if (wren) begin
             storage[addrdest] <= din;
         end
@@ -122,7 +115,6 @@ module datapath (
                 4'h1: result <= a - b;
                 4'h2: result <= a * b;
                 4'h3: acc    <= acc + (a * b);
-                4'h5: result <= a;             // Pass-through for latching
                 4'h8: result <= acc[7:0];
                 default: result <= result;
             endcase
