@@ -9,20 +9,21 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-A state machine controlling a 5-floor elevator. It latches requests from cabin and hall buttons, moving the car sequentially.
+This Hardware Accelerator is a custom 16-bit Multiply-Accumulate (MAC) engine using a 4-bit ISA and 8 registers R0 to R7. On power-up, it latches external switch values into its registers and runs a calculation loop. A 128-cycle strobe holds each result so the math is visible on LEDs.
 
 ## How to test
 
--Pulse any input in ui_in[4:0] (Cabin) or ui_in[7:5] / uio_in[4:0] (Hall).
+-Set Inputs: Set ui_in (Operand A) and uio_in (Operand B) using switches.
 
--Monitor uo_out[2:0] for binary floor position.
+-Reset: Pulse rst_n low to latch your switch values.
 
--Observe uo_out[3] (Up), uo_out[4] (Down), and uo_out[5] (Door Open blink).
+-Run: Set ena high to start the loop.
+
+-Observe: Monitor uo_out[7:0] for: A → B → Sum → Diff → Product → Accumulator.
 
 ## External hardware
 
--LEDs: Connected to uo_out[5:0] to show floor and status.
+-16 Switches: Connected to ui_in and uio_in for data input.
 
--Buttons: Connected to ui_in and uio_in for floor calls.
+-8 LEDs: Connected to uo_out[7:0] to display binary results.
 
--OLED: Pins uo_out[7:6] reserved for I2C monitoring.
