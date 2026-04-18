@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_elevator_controller (
+module tt_um_hardware_accelerator (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -81,9 +81,9 @@ module tt_um_elevator_controller (
     end
 
     // --- OUTPUT ASSIGNMENTS ---
-    assign uo_out  = alu_result; // Result visible on LEDs/Waveform
+    assign uo_out  = alu_result; 
     assign uio_out = 8'b0;
-    assign uio_oe  = 8'b0; // Inputs only to prevent shorts
+    assign uio_oe  = 8'b0; 
 
 endmodule
 
@@ -120,14 +120,14 @@ module datapath (
             acc <= 16'b0; result <= 8'b0;
         end else begin
             case (opcode)
-                4'h0: result <= a + b;             // ADD
-                4'h1: result <= a - b;             // SUB
-                4'h2: result <= a * b;             // MUL
-                4'h3: acc    <= acc + (a * b);     // MAC UNIT
-                4'h6: result <= a << b[2:0];       // SHIFT
-                4'h4: result <= b;                 // LOAD IMM
-                4'h5: result <= a;                 // STORE
-                4'h8: result <= acc[7:0];          // STACC
+                4'h0: result <= a + b;
+                4'h1: result <= a - b;
+                4'h2: result <= a * b;
+                4'h3: acc    <= acc + (a * b);
+                4'h6: result <= a << b[2:0];
+                4'h4: result <= b;
+                4'h5: result <= a;
+                4'h8: result <= acc[7:0];
                 default: result <= result;
             endcase
         end
