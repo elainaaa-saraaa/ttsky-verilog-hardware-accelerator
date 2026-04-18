@@ -1,52 +1,52 @@
 # Tiny Tapeout project information
 project:
-  title:        "5-Floor Elevator Controller"      # Project title
-  author:       "elaina"      # Your name
-  discord:      ""      # Your discord username (optional)
-  description:  "Elevator controller state machine with floor requests and visible delays"      # Updated description
-  language:     "Verilog" 
-  clock_hz:     10000000       # Updated to 10MHz (standard TT clock)
+  title:        "Hardware Accelerator"
+  author:       "elaina"
+  discord:      "" 
+  description:  "16-bit MAC hardware accelerator with custom ISA and 8-register file"
+  language:     "Verilog"
+  clock_hz:     10000000       
 
   # How many tiles your design occupies?
   tiles: "1x1"          
 
   # Your top module name:
-  top_module:  "tt_um_elevator_controller"
+  top_module:  "tt_um_hardware_accelerator"
 
   source_files:
-    - "project.v"
+    - "tt_um_hardware_accelerator.v"
 
 # The pinout of your project.
 pinout:
-  # Inputs (ui)
-  ui[0]: "Cabin Select Floor 0"
-  ui[1]: "Cabin Select Floor 1"
-  ui[2]: "Cabin Select Floor 2"
-  ui[3]: "Cabin Select Floor 3"
-  ui[4]: "Cabin Select Floor 4"
-  ui[5]: "Hall Call Up 0"
-  ui[6]: "Hall Call Up 1"
-  ui[7]: "Hall Call Up 2"
+  # Inputs (ui) - Mapped to the internal 'a' operand bus
+  ui[0]: "External Op A[0]"
+  ui[1]: "External Op A[1]"
+  ui[2]: "External Op A[2]"
+  ui[3]: "External Op A[3]"
+  ui[4]: "External Op A[4]"
+  ui[5]: "External Op A[5]"
+  ui[6]: "External Op A[6]"
+  ui[7]: "External Op A[7]"
 
-  # Outputs (uo)
-  uo[0]: "Floor Bit 0"
-  uo[1]: "Floor Bit 1"
-  uo[2]: "Floor Bit 2"
-  uo[3]: "Moving Up LED"
-  uo[4]: "Moving Down LED"
-  uo[5]: "Door Open (Blink)"
-  uo[6]: "OLED SCL (Pass)"
-  uo[7]: "OLED SDA (GND)"
+  # Outputs (uo) - The 8-bit ALU/Accumulator result
+  uo[0]: "ALU Result [0]"
+  uo[1]: "ALU Result [1]"
+  uo[2]: "ALU Result [2]"
+  uo[3]: "ALU Result [3]"
+  uo[4]: "ALU Result [4]"
+  uo[5]: "ALU Result [5]"
+  uo[6]: "ALU Result [6]"
+  uo[7]: "ALU Result [7]"
 
-  # Bidirectional pins (uio) - Used as additional inputs
-  uio[0]: "Hall Call Up 3"
-  uio[1]: "Hall Call Down 1"
-  uio[2]: "Hall Call Down 2"
-  uio[3]: "Hall Call Down 3"
-  uio[4]: "Hall Call Down 4"
-  uio[5]: "unused"
-  uio[6]: "unused"
-  uio[7]: "unused"
+  # Bidirectional pins (uio) - Mapped to the internal 'b' operand bus
+  uio[0]: "External Op B[0]"
+  uio[1]: "External Op B[1]"
+  uio[2]: "External Op B[2]"
+  uio[3]: "External Op B[3]"
+  uio[4]: "External Op B[4]"
+  uio[5]: "External Op B[5]"
+  uio[6]: "External Op B[6]"
+  uio[7]: "External Op B[7]"
 
 # Do not change!
 yaml_version: 6
